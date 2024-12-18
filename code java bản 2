@@ -1,0 +1,109 @@
+//LỚP ELGAMAL
+import java.math.BigInteger;  
+import java.security.SecureRandom;  
+
+public class ElGamal {  
+    private BigInteger p; // Số nguyên tố lớn  
+    private BigInteger g; // Cơ sở  
+    private BigInteger x; // Khóa bí mật  
+    private BigInteger y; // Khóa công khai  
+
+    public ElGamal(int bitLength) {  
+        SecureRandom random = new SecureRandom();  
+        // Tạo số nguyên tố p  
+        p = BigInteger.probablePrime(bitLength, random);  
+        
+        // Chọn g là một số nguyên tố nhỏ hơn p  
+        g = new BigInteger(bitLength, random).mod(p.subtract(BigInteger.TWO)).add(BigInteger.TWO);  
+
+        // Khóa bí mật  
+        x = new BigInteger(bitLength - 1, random).mod(p.subtract(BigInteger.ONE));  
+        
+        // Khóa công khai  
+        y = g.modPow(x, p);  
+    }  
+
+    // Ký thông điệp  
+    public BigInteger[] sign(BigInteger message) {  
+        SecureRandom random = new SecureRandom();  
+        BigInteger k;  
+        do {  
+            k = new BigInteger(p.bitLength() - 1, random);  
+        } while (!k.gcd(p.subtract(BigInteger.ONE)).equals(BigInteger.ONE));  
+
+        BigInteger r = g.modPow(k, p);  
+        BigInteger kInverse = k.modInverse(p.subtract(BigInteger.ONE));  
+        BigInteger s = kInverse.multiply(message.subtract(x.multiply(r)).mod(p.subtract(BigInteger.ONE))).mod(p.subtract(BigInteger.ONE));  
+
+        return new BigInteger[] { r, s };  
+    }  
+
+    // Xác thực chữ ký  
+    public boolean verify(BigInteger message, BigInteger[] signature) {  
+        BigInteger r = signature[0];  
+        BigInteger s = signature[1];  
+
+        if (r.compareTo(BigInteger.ZERO) <= 0 || r.compareTo(p) >= 0) return false;  
+        if (s.compareTo(BigInteger.ZERO) <= 0 || s.compareTo(p.subtract(BigInteger.ONE)) >= 0) return false;  
+
+        // Tính LHS = g^m mod p  
+        BigInteger lhs = g.modPow(message, p);  
+        
+        // Tính RHS = (y^r * r^s) mod p  
+        BigInteger rhs = (y.modPow(r, p).multiply(r.modPow(s, p)).mod(p));  
+
+        return lhs.equals(rhs);  
+    }  
+
+    // Getter cho các khóa  
+    public BigInteger getPublicKey() {  
+        return y;  
+    }  
+
+    public BigInteger getP() {  
+        return p;  
+    }  
+
+    public BigInteger getG() {  
+        return g;  
+    }  
+
+    public BigInteger getX() {  
+        return x; // Trong thực tế, bạn không nên chia sẻ khóa bí mật  
+    }  
+}
+
+//LỚP MAIN
+import java.math.BigInteger;  
+import java.util.Scanner;  
+
+public class Main {  
+    public static void main(String[] args) {  
+        ElGamal elGamal = new ElGamal(512);  
+        
+        // Lấy khóa công khai  
+        BigInteger publicKey = elGamal.getPublicKey();  
+        BigInteger p = elGamal.getP();  
+        BigInteger g = elGamal.getG();  
+        
+        System.out.println("Khóa công khai: " + publicKey);  
+        System.out.println("Số nguyên tố p: " + p);  
+        System.out.println("Cơ sở g: " + g);  
+
+        // Nhập thông điệp  
+        Scanner scanner = new Scanner(System.in);  
+        System.out.print("Nhập thông điệp (dạng số): ");  
+        BigInteger message = new BigInteger(scanner.nextLine());  
+
+        // Ký thông điệp  
+        BigInteger[] signature = elGamal.sign(message);  
+        System.out.println("Chữ ký (r, s): (" + signature[0] + ", " + signature[1] + ")");  
+
+        // Lưu chữ ký và thông điệp (có thể cải thiện bằng việc lưu vào file hoặc database trong thực tế)  
+        // Ở đây chúng ta chỉ trình bày trên console  
+
+        // Xác thực chữ ký  
+        boolean isValid = elGamal.verify(message, signature);  
+        System.out.println("Chữ ký hợp lệ: " + isValid);  
+    }  
+}
