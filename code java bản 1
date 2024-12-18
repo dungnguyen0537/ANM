@@ -1,0 +1,230 @@
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.util.Random;
+
+public class ElgamalDigitalSignature {
+
+    private static final int BIT_LENGTH = 2048; // Độ dài khóa
+
+    public static void main(String[] args) throws NoSuchAlgorithmException {
+        // Tạo cặp khóa ElGamal
+        ElGamalKeyPair keyPair = generateKeyPair();
+
+        // Thông điệp cần ký
+        String message = "Đây là thông điệp cần được ký!";
+
+        // Tạo chữ ký số
+        ElGamalSignature signature = sign(message, keyPair.getPrivateKey());
+
+        // Xác thực chữ ký số
+        boolean isValid = verify(message, signature, keyPair.getPublicKey());
+
+        System.out.println("Thông điệp: " + message);
+        System.out.println("Chữ ký: " + signature);
+        System.out.println("Xác thực chữ ký: " + isValid);
+    }
+
+    // Tạo cặp khóa ElGamal
+    public static ElGamalKeyPair generateKeyPair() {
+        // Tạo số nguyên tố ngẫu nhiên p
+        BigInteger p = new BigInteger(BIT_LENGTH, 100, new SecureRandom());
+
+        // Tìm phần tử nguyên thủy g của p
+        BigInteger g = findGenerator(p);
+
+        // Chọn số nguyên ngẫu nhiên x (khóa bí mật)
+        BigInteger x = new BigInteger(p.bitLength() - 1, new Random());
+
+        // Tính y = g^x mod p (khóa công khai)
+        BigInteger y = g.modPow(x, p);
+
+        // Trả về cặp khóa
+        return new ElGamalKeyPair(new ElGamalPublicKey(p, g, y), new ElGamalPrivateKey(x));
+    }
+
+    // Tìm phần tử nguyên thủy của p
+    private static BigInteger findGenerator(BigInteger p) {
+        BigInteger g;
+        do {
+            g = new BigInteger(p.bitLength() - 1, new Random());
+        } while (!isGenerator(g, p));
+        return g;
+    }
+
+    // Kiểm tra xem g có phải là phần tử nguyên thủy của p hay không
+    private static boolean isGenerator(BigInteger g, BigInteger p) {
+        BigInteger pMinus1 = p.subtract(BigInteger.ONE);
+        BigInteger q = pMinus1.divide(BigInteger.valueOf(2));
+        return !g.modPow(q, p).equals(BigInteger.ONE);
+    }
+
+    // Tạo chữ ký số
+    public static ElGamalSignature sign(String message, ElGamalPrivateKey privateKey) throws NoSuchAlgorithmException {
+        BigInteger p = privateKey.getP();
+        BigInteger g = privateKey.getG();
+        BigInteger x = privateKey.getX();
+
+        // Chọn số nguyên ngẫu nhiên k
+        BigInteger k;
+        do {
+            k = new BigInteger(p.bitLength() - 1, new Random());
+        } while (!k.gcd(p.subtract(BigInteger.ONE)).equals(BigInteger.ONE));
+
+        // Tính r = g^k mod p
+        BigInteger r = g.modPow(k, p);
+
+        // Tính giá trị băm của thông điệp
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        byte[] messageHash = md.digest(message.getBytes());
+        BigInteger h = new BigInteger(1, messageHash);
+
+        // Tính s = (h - xr)k^-1 mod (p-1)
+        BigInteger kInverse = k.modInverse(p.subtract(BigInteger.ONE));
+        BigInteger s = h.subtract(x.multiply(r)).multiply(kInverse).mod(p.subtract(BigInteger.ONE));
+
+        // Trả về chữ ký
+        return new ElGamalSignature(r, s);
+    }
+
+    // Xác thực chữ ký số
+    public static boolean verify(String message, ElGamalSignature signature, ElGamalPublicKey publicKey) throws NoSuchAlgorithmException {
+        BigInteger p = publicKey.getP();
+        BigInteger g = publicKey.getG();
+        BigInteger y = publicKey.getY();
+        BigInteger r = signature.getR();
+        BigInteger s = signature.getS();
+
+        // Kiểm tra 0 < r < p và 0 < s < p-1
+        if (r.compareTo(BigInteger.ZERO) <= 0 || r.compareTo(p) >= 0 || s.compareTo(BigInteger.ZERO) <= 0 || s.compareTo(p.subtract(BigInteger.ONE)) >= 0) {
+            return false;
+        }
+
+        // Tính giá trị băm của thông điệp
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        byte[] messageHash = md.digest(message.getBytes());
+        BigInteger h = new BigInteger(1, messageHash);
+
+        // Tính w = s^-1 mod (p-1)
+        BigInteger w = s.modInverse(p.subtract(BigInteger.ONE));
+
+        // Tính u1 = hw mod (p-1)
+        BigInteger u1 = h.multiply(w).mod(p.subtract(BigInteger.ONE));
+
+        // Tính u2 = rw mod (p-1)
+        BigInteger u2 = r.multiply(w).mod(p.subtract(BigInteger.ONE));
+
+        // Tính v = g^u1 * y^u2 mod p
+        BigInteger v = g.modPow(u1, p).multiply(y.modPow(u2, p)).mod(p);
+
+        // Kiểm tra v = r
+        return v.equals(r);
+    }
+
+    // Lớp biểu diễn cặp khóa ElGamal
+    private static class ElGamalKeyPair {
+        private ElGamalPublicKey publicKey;
+        private ElGamalPrivateKey privateKey;
+
+        public ElGamalKeyPair(ElGamalPublicKey publicKey, ElGamalPrivateKey privateKey) {
+            this.publicKey = publicKey;
+            this.privateKey = privateKey;
+        }
+
+        public ElGamalPublicKey getPublicKey() {
+            return publicKey;
+        }
+
+        public ElGamalPrivateKey getPrivateKey() {
+            return privateKey;
+        }
+    }
+
+    // Lớp biểu diễn khóa công khai ElGamal
+    private static class ElGamalPublicKey {
+        private BigInteger p;
+        private BigInteger g;
+        private BigInteger y;
+
+        public ElGamalPublicKey(BigInteger p, BigInteger g, BigInteger y) {
+            this.p = p;
+            this.g = g;
+            this.y = y;
+        }
+
+        public BigInteger getP() {
+            return p;
+        }
+
+        public BigInteger getG() {
+            return g;
+        }
+
+        public BigInteger getY() {
+            return y;
+        }
+    }
+
+    // Lớp biểu diễn khóa bí mật ElGamal
+    private static class ElGamalPrivateKey {
+        private BigInteger x;
+        private BigInteger p;
+        private BigInteger g;
+
+        public ElGamalPrivateKey(BigInteger x) {
+            this.x = x;
+            this.p = null; // Khởi tạo p là null
+            this.g = null; // Khởi tạo g là null
+        }
+
+        public BigInteger getX() {
+            return x;
+        }
+
+        // Getters cho p và g, trả về null nếu chưa được khởi tạo
+        public BigInteger getP() {
+            return p;
+        }
+
+        public BigInteger getG() {
+            return g;
+        }
+
+        // Setters cho p và g
+        public void setP(BigInteger p) {
+            this.p = p;
+        }
+
+        public void setG(BigInteger g) {
+            this.g = g;
+        }
+    }
+
+    // Lớp biểu diễn chữ ký ElGamal
+    private static class ElGamalSignature {
+        private BigInteger r;
+        private BigInteger s;
+
+        public ElGamalSignature(BigInteger r, BigInteger s) {
+            this.r = r;
+            this.s = s;
+        }
+
+        public BigInteger getR() {
+            return r;
+        }
+
+        public BigInteger getS() {
+            return s;
+        }
+
+        @Override
+        public String toString() {
+            return "ElGamalSignature{" +
+                    "r=" + r +
+                    ", s=" + s +
+                    '}';
+        }
+    }
+}
